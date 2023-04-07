@@ -1,0 +1,69 @@
+import telegram
+import openai
+
+# Set up the Telegram bot
+bot = telegram.Bot(token='YOUR_TELEGRAM_BOT_TOKEN')
+
+# Define a function to ask the user for their OpenAI API key
+def ask_for_api_key(update, context):
+    update.message.reply_text('Please enter your OpenAI API key:')
+    return 1
+
+# Define a function to save the user's OpenAI API key and start answering questions
+def start_answering(update, context):
+    api_key = update.message.text
+    openai.api_key = api_key
+    update.message.reply_text('Thanks, your OpenAI API key has been saved. Now I can start answering questions.')
+    context.chat_data['api_key'] = api_key
+    return telegram.ext.ConversationHandler.END
+
+# Define a function to generate a response using the OpenAI API
+def generate_response(update, context):
+    message = update.message.text
+    api_key = context.chat_data.get('api_key')
+
+    if api_key:
+        response = openai.Completion.create(
+            engine='davinci',
+            prompt=message,
+            max_tokens=100
+        )
+        update.message.reply_text(response.choices[0].text)
+    else:
+        update.message.reply_text('Please enter your OpenAI API key first by typing /start.')
+
+# Define a function to handle errors
+def handle_error(update, context):
+    """Log the error and send a message to the user."""
+    error_message = f'An error occurred: {context.error}'
+    bot.send_message(chat_id=update.effective_chat.id, text=error_message)
+    logger.error(error_message, exc_info=context.error)
+
+# Set up logging
+import logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger()
+
+# Set up the Telegram bot updater and add the conversation handler
+updater = telegram.ext.Updater(token='YOUR_TELEGRAM_BOT_TOKEN', use_context=True)
+conv_handler = telegram.ext.ConversationHandler(
+    entry_points=[telegram.ext.CommandHandler('start', ask_for_api_key)],
+    states={
+        1: [telegram.ext.MessageHandler(telegram.ext.Filters.text, start_answering)],
+    },
+    fallbacks=[telegram.ext.CommandHandler('cancel', cancel)],
+)
+updater.dispatcher.add_handler(conv_handler)
+
+# Add a message handler to generate responses
+updater.dispatcher.add_handler(telegram.ext.MessageHandler(telegram.ext.Filters.text, generate_response))
+
+# Add an error handler
+updater.dispatcher.add_error_handler(handle_error)
+
+# Start the bot
+updater.start_polling()
+updater.idle()
